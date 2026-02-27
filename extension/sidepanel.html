@@ -10,7 +10,7 @@
   <header class="header">
     <div>
       <h1>Seller Automation</h1>
-      <p>多功能侧边菜单，可持续扩展新模块。</p>
+      <p>亚马逊卖家全能工具箱 · 12 大功能模块</p>
     </div>
     <span id="runState" class="state idle">Idle</span>
   </header>
@@ -123,12 +123,12 @@
               <span>Role</span>
               <select id="aiRoleSelect">
                 <option value="general">通用</option>
-                <option value="operationsConsultant">运营策略顾问</option>
-                <option value="listingOptimizer">Listing优化师</option>
-                <option value="adsSpecialist">广告投放专家</option>
-                <option value="fbaProfitAnalyst">FBA利润分析师</option>
-                <option value="complianceAdvisor">合规风控顾问</option>
-                <option value="customerServiceCoach">客服沟通教练</option>
+                <option value="operationsconsultant">运营策略顾问</option>
+                <option value="listingoptimizer">Listing优化师</option>
+                <option value="adsspecialist">广告投放专家</option>
+                <option value="fbaprofitanalyst">FBA利润分析师</option>
+                <option value="complianceadvisor">合规风控顾问</option>
+                <option value="customerservicecoach">客服沟通教练</option>
               </select>
             </label>
           </div>
@@ -219,14 +219,310 @@
       </article>
     </section>
 
+    <!-- ===== 广告报告 ===== -->
+    <section class="view" id="view-ads">
+      <article class="card">
+        <h2>广告报告提取</h2>
+        <label class="field">
+          <span>报告类型</span>
+          <select id="adsReportType">
+            <option value="sp">Sponsored Products (SP)</option>
+            <option value="sb">Sponsored Brands (SB)</option>
+            <option value="sd">Sponsored Display (SD)</option>
+            <option value="searchTerms">搜索词报告</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>时间范围</span>
+          <select id="adsDateRange">
+            <option value="LAST_7_DAYS">近 7 天</option>
+            <option value="LAST_14_DAYS">近 14 天</option>
+            <option value="LAST_30_DAYS" selected>近 30 天</option>
+            <option value="LAST_60_DAYS">近 60 天</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>ASIN 过滤（可选，逗号分隔）</span>
+          <input id="adsAsinFilter" type="text" placeholder="留空则提取全部" />
+        </label>
+        <div class="actions">
+          <button id="adsExtractBtn" class="primary">提取广告数据</button>
+          <button id="adsExportBtn" class="secondary">导出 CSV</button>
+        </div>
+        <div id="adsSummary" class="module-summary"></div>
+        <p class="note">需要当前标签页处于 Seller Central 广告管理页面并已登录。</p>
+      </article>
+
+      <article class="card">
+        <h2>广告快速诊断</h2>
+        <div class="metric-grid" id="adsMetrics">
+          <div class="metric-item">
+            <span class="metric-label">总花费</span>
+            <span class="metric-value" id="adsTotalSpend">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">总销售额</span>
+            <span class="metric-value" id="adsTotalSales">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">ACOS</span>
+            <span class="metric-value" id="adsAcos">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">ROAS</span>
+            <span class="metric-value" id="adsRoas">--</span>
+          </div>
+        </div>
+        <button id="adsAiAnalyzeBtn" class="primary full">AI 分析广告表现</button>
+      </article>
+    </section>
+
+    <!-- ===== 库存监控 ===== -->
+    <section class="view" id="view-inventory">
+      <article class="card">
+        <h2>库存健康监控</h2>
+        <label class="field">
+          <span>ASIN / SKU 列表（逗号/换行分隔）</span>
+          <textarea id="inventoryAsinInput" rows="3" placeholder="B0FPQQM2DH, SKU-001"></textarea>
+        </label>
+        <div class="actions">
+          <button id="inventoryFetchBtn" class="primary">获取库存数据</button>
+          <button id="inventoryExportBtn" class="secondary">导出报告</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>库存概览</h2>
+        <div class="metric-grid" id="inventoryMetrics">
+          <div class="metric-item">
+            <span class="metric-label">可售库存</span>
+            <span class="metric-value" id="invAvailable">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">入库中</span>
+            <span class="metric-value" id="invInbound">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">预计可售天数</span>
+            <span class="metric-value" id="invDaysOfSupply">--</span>
+          </div>
+          <div class="metric-item warn-zone" id="invAlertZone">
+            <span class="metric-label">补货预警</span>
+            <span class="metric-value" id="invAlert">--</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>补货计算</h2>
+        <label class="field">
+          <span>日均销量</span>
+          <input id="invDailySales" type="number" min="0" step="1" value="10" />
+        </label>
+        <label class="field">
+          <span>补货周期（天）</span>
+          <input id="invLeadTime" type="number" min="1" max="120" step="1" value="30" />
+        </label>
+        <label class="field">
+          <span>安全库存天数</span>
+          <input id="invSafetyDays" type="number" min="0" max="60" step="1" value="7" />
+        </label>
+        <button id="invCalcRestockBtn" class="primary full">计算建议补货量</button>
+        <div id="invRestockResult" class="module-result"></div>
+      </article>
+    </section>
+
+    <!-- ===== 利润计算器 ===== -->
+    <section class="view" id="view-profit">
+      <article class="card">
+        <h2>FBA 利润计算器</h2>
+        <div class="profit-grid">
+          <label class="field">
+            <span>售价 ($)</span>
+            <input id="profitPrice" type="number" min="0" step="0.01" placeholder="29.99" />
+          </label>
+          <label class="field">
+            <span>商品成本 ($)</span>
+            <input id="profitCogs" type="number" min="0" step="0.01" placeholder="5.00" />
+          </label>
+          <label class="field">
+            <span>头程运费/件 ($)</span>
+            <input id="profitShipping" type="number" min="0" step="0.01" placeholder="1.50" />
+          </label>
+          <label class="field">
+            <span>FBA 配送费 ($)</span>
+            <input id="profitFbaFee" type="number" min="0" step="0.01" placeholder="5.00" />
+          </label>
+          <label class="field">
+            <span>佣金比例 (%)</span>
+            <input id="profitReferralPct" type="number" min="0" max="50" step="0.1" value="15" />
+          </label>
+          <label class="field">
+            <span>月仓储费/件 ($)</span>
+            <input id="profitStorageFee" type="number" min="0" step="0.01" placeholder="0.20" />
+          </label>
+          <label class="field">
+            <span>广告费/件 ($)</span>
+            <input id="profitAdsCost" type="number" min="0" step="0.01" placeholder="3.00" />
+          </label>
+          <label class="field">
+            <span>退货率 (%)</span>
+            <input id="profitReturnRate" type="number" min="0" max="100" step="0.1" value="3" />
+          </label>
+        </div>
+        <button id="profitCalcBtn" class="primary full">计算利润</button>
+      </article>
+
+      <article class="card" id="profitResultCard" style="display:none;">
+        <h2>利润分析结果</h2>
+        <div class="metric-grid">
+          <div class="metric-item">
+            <span class="metric-label">亚马逊佣金</span>
+            <span class="metric-value" id="profitReferralVal">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">总成本/件</span>
+            <span class="metric-value" id="profitTotalCost">--</span>
+          </div>
+          <div class="metric-item highlight-green">
+            <span class="metric-label">净利润/件</span>
+            <span class="metric-value" id="profitNetProfit">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">利润率</span>
+            <span class="metric-value" id="profitMargin">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">盈亏平衡价</span>
+            <span class="metric-value" id="profitBreakeven">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">ROI</span>
+            <span class="metric-value" id="profitRoi">--</span>
+          </div>
+        </div>
+        <div id="profitBreakdown" class="profit-breakdown"></div>
+        <button id="profitAiAnalyzeBtn" class="secondary full">AI 利润优化建议</button>
+      </article>
+    </section>
+
+    <!-- ===== 关键词工具 ===== -->
+    <section class="view" id="view-keywords">
+      <article class="card">
+        <h2>关键词研究</h2>
+        <label class="field">
+          <span>种子关键词（逗号/换行分隔）</span>
+          <textarea id="kwSeedInput" rows="3" placeholder="wireless earbuds, bluetooth headphones"></textarea>
+        </label>
+        <label class="field">
+          <span>竞品 ASIN（可选，用于反查关键词）</span>
+          <input id="kwCompetitorAsin" type="text" placeholder="B0FPQQM2DH" />
+        </label>
+        <div class="actions">
+          <button id="kwExpandBtn" class="primary">AI 拓词</button>
+          <button id="kwExportBtn" class="secondary">导出关键词</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>关键词分类</h2>
+        <div class="kw-category-tabs">
+          <button class="kw-tab active" data-kw-cat="core">核心词</button>
+          <button class="kw-tab" data-kw-cat="longtail">长尾词</button>
+          <button class="kw-tab" data-kw-cat="competitor">竞品词</button>
+          <button class="kw-tab" data-kw-cat="scenario">场景词</button>
+        </div>
+        <div id="kwResultList" class="kw-result-list">
+          <p class="note">输入种子关键词后点击"AI 拓词"开始分析</p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Listing 关键词检查</h2>
+        <label class="field">
+          <span>ASIN</span>
+          <input id="kwCheckAsin" type="text" placeholder="B0FPQQM2DH" />
+        </label>
+        <button id="kwCheckCoverageBtn" class="primary full">检查关键词覆盖率</button>
+        <div id="kwCoverageResult" class="module-result"></div>
+      </article>
+    </section>
+
+    <!-- ===== 评论分析 ===== -->
+    <section class="view" id="view-reviews">
+      <article class="card">
+        <h2>评论分析</h2>
+        <label class="field">
+          <span>ASIN</span>
+          <input id="reviewAsin" type="text" placeholder="B0FPQQM2DH" />
+        </label>
+        <label class="field">
+          <span>分析维度</span>
+          <select id="reviewAnalysisType">
+            <option value="sentiment">情感分析</option>
+            <option value="painpoints">痛点提取</option>
+            <option value="highlights">卖点提炼</option>
+            <option value="competitive">竞品对比</option>
+            <option value="full" selected>全面分析</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>评论来源</span>
+          <select id="reviewSource">
+            <option value="paste">手动粘贴</option>
+            <option value="auto">自动抓取（需在商品页）</option>
+          </select>
+        </label>
+        <label class="field" id="reviewPasteField">
+          <span>粘贴评论内容</span>
+          <textarea id="reviewPasteInput" rows="5" placeholder="粘贴评论内容，每条评论用空行分隔..."></textarea>
+        </label>
+        <div class="actions">
+          <button id="reviewAnalyzeBtn" class="primary">AI 分析评论</button>
+          <button id="reviewExportBtn" class="secondary">导出分析报告</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>分析结果</h2>
+        <div class="metric-grid" id="reviewMetrics">
+          <div class="metric-item">
+            <span class="metric-label">评论总数</span>
+            <span class="metric-value" id="reviewCount">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">好评率</span>
+            <span class="metric-value" id="reviewPositiveRate">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">主要痛点</span>
+            <span class="metric-value" id="reviewTopPain">--</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">核心卖点</span>
+            <span class="metric-value" id="reviewTopHighlight">--</span>
+          </div>
+        </div>
+        <div id="reviewAnalysisResult" class="module-result"></div>
+      </article>
+    </section>
+
+    <!-- ===== 模块路线图 ===== -->
     <section class="view" id="view-modules">
       <article class="card">
         <h2>模块路线图</h2>
         <ul class="roadmap">
-          <li><strong>Orders:</strong> 已上线</li>
-          <li><strong>Product Extraction:</strong> 已上线</li>
-          <li><strong>Ads Reports:</strong> 预留扩展位</li>
-          <li><strong>Payments Request:</strong> 预留扩展位</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 订单报告自动下载</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 产品数据提取</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> AI Chat 多角色对话</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 广告报告提取</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 库存监控与补货</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> FBA 利润计算器</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 关键词工具</li>
+          <li class="roadmap-live"><span class="roadmap-badge live">已上线</span> 评论分析</li>
+          <li><span class="roadmap-badge planned">规划中</span> Payments 付款请求</li>
+          <li><span class="roadmap-badge planned">规划中</span> 多店铺管理</li>
+          <li><span class="roadmap-badge planned">规划中</span> 数据看板 Dashboard</li>
         </ul>
       </article>
     </section>
@@ -372,6 +668,54 @@
         </span>
         <span class="menu-btn-label">AI 角色</span>
       </button>
+      <button class="menu-btn" data-view="ads">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20V10"></path>
+            <path d="M6 20v-6"></path>
+            <path d="M18 20V4"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">广告报告</span>
+      </button>
+      <button class="menu-btn" data-view="inventory">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7l8-4 8 4v10l-8 4-8-4V7z"></path>
+            <path d="M4 7l8 4 8-4"></path>
+            <path d="M12 11v10"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">库存监控</span>
+      </button>
+      <button class="menu-btn" data-view="profit">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="1" x2="12" y2="23"></line>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">利润计算</span>
+      </button>
+      <button class="menu-btn" data-view="keywords">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            <line x1="8" y1="11" x2="14" y2="11"></line>
+            <line x1="11" y1="8" x2="11" y2="14"></line>
+          </svg>
+        </span>
+        <span class="menu-btn-label">关键词</span>
+      </button>
+      <button class="menu-btn" data-view="reviews">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </span>
+        <span class="menu-btn-label">评论分析</span>
+      </button>
       <button class="menu-btn" data-view="logs">
         <span class="menu-btn-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -401,7 +745,7 @@
             <path d="M13 13h5v5h-5z"></path>
           </svg>
         </span>
-        <span class="menu-btn-label">扩展路线</span>
+        <span class="menu-btn-label">路线图</span>
       </button>
     </aside>
   </div>

@@ -1,0 +1,13 @@
+{
+  "name": "amazon-order-report-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless Puppeteer service for Amazon Seller Central order report download.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "puppeteer": "^24.35.0"
+  }
+}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seller Automation V2</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>Seller Automation V2</h1>
+      <p>仅在 Seller Central 报告页面执行，不干扰常规浏览。</p>
+    </div>
+    <span id="runState" class="state idle">Idle</span>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>订单报告</h2>
+      <label class="field">
+        <span>日期预设</span>
+        <select id="datePreset">
+          <option value="LAST_1_DAY">近 1 天</option>
+          <option value="LAST_7_DAYS">近 7 天</option>
+          <option value="LAST_30_DAYS">近 30 天</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>文件名前缀</span>
+        <input id="reportNamePrefix" type="text" maxlength="40" placeholder="orders-report" />
+      </label>
+
+      <label class="field checkbox">
+        <input id="closeTabAfterRun" type="checkbox" checked />
+        <span>执行完成后关闭自动化标签页</span>
+      </label>
+
+      <div class="actions">
+        <button id="saveOrdersSettings" class="secondary">保存设置</button>
+        <button id="runNow" class="primary">立即下载订单报告</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>定时任务</h2>
+      <label class="field checkbox">
+        <input id="schedulerEnabled" type="checkbox" />
+        <span>开启周期执行</span>
+      </label>
+
+      <label class="field">
+        <span>执行间隔（小时）</span>
+        <input id="everyHours" type="number" min="1" max="24" step="1" value="12" />
+      </label>
+
+      <button id="saveSchedule" class="secondary">保存定时配置</button>
+    </section>
+
+    <section class="card">
+      <h2>模块路线</h2>
+      <ul class="roadmap">
+        <li><strong>Orders:</strong> 可用（当前实现）</li>
+        <li><strong>Ads Reports:</strong> 计划中（下阶段接入）</li>
+        <li><strong>Payments Request:</strong> 计划中（下阶段接入）</li>
+      </ul>
+    </section>
+
+    <section class="card logs">
+      <div class="logs-header">
+        <h2>运行日志</h2>
+        <div>
+          <button id="refreshLogs" class="ghost">刷新</button>
+          <button id="clearLogs" class="ghost">清空</button>
+        </div>
+      </div>
+      <div id="logsList" class="logs-list"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span id="statusText">准备就绪</span>
+  </footer>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

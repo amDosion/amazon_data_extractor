@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Icon Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+        }
+        h1 { color: #333; }
+        .icons {
+            display: flex;
+            gap: 30px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        .icon-box {
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            display: block;
+            margin: 10px 0;
+        }
+        button {
+            background: #ff9900;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #e88b00;
+        }
+        .instructions {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+        }
+        .instructions ol {
+            line-height: 1.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Amazon Data Extractor - 图标生成器</h1>
+        <p>点击下面的按钮生成并下载不同尺寸的图标</p>
+
+        <div class="icons">
+            <div class="icon-box">
+                <h3>16x16</h3>
+                <canvas id="icon16" width="16" height="16"></canvas>
+                <button onclick="downloadIcon('icon16', 16)">下载 icon16.png</button>
+            </div>
+
+            <div class="icon-box">
+                <h3>48x48</h3>
+                <canvas id="icon48" width="48" height="48"></canvas>
+                <button onclick="downloadIcon('icon48', 48)">下载 icon48.png</button>
+            </div>
+
+            <div class="icon-box">
+                <h3>128x128</h3>
+                <canvas id="icon128" width="128" height="128"></canvas>
+                <button onclick="downloadIcon('icon128', 128)">下载 icon128.png</button>
+            </div>
+        </div>
+
+        <button onclick="downloadAll()" style="width: 100%; font-size: 16px; padding: 15px;">
+            📦 一键下载所有图标
+        </button>
+
+        <div class="instructions">
+            <h3>使用说明</h3>
+            <ol>
+                <li>点击各个"下载"按钮，保存对应尺寸的图标</li>
+                <li>或点击"一键下载所有图标"按钮</li>
+                <li>将下载的图标放入：<code>extension/icons/</code> 文件夹</li>
+                <li>确保文件名为：<code>icon16.png</code>, <code>icon48.png</code>, <code>icon128.png</code></li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // 绘制图标
+        function drawIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+
+            // 背景渐变
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#ff9900');
+            gradient.addColorStop(1, '#ff6600');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+
+            // 绘制表格图标（简化的Excel图标）
+            ctx.fillStyle = 'white';
+
+            if (size === 16) {
+                // 16x16 简化版
+                ctx.fillRect(3, 3, 10, 10);
+                ctx.fillStyle = '#ff9900';
+                ctx.fillRect(4, 4, 4, 4);
+                ctx.fillRect(9, 4, 4, 4);
+                ctx.fillRect(4, 9, 4, 4);
+                ctx.fillRect(9, 9, 4, 4);
+            } else if (size === 48) {
+                // 48x48 中等版
+                const margin = 10;
+                const cellSize = 8;
+                const gap = 2;
+
+                // 白色背景
+                ctx.fillRect(margin, margin, size - margin * 2, size - margin * 2);
+
+                // 绘制3x3网格
+                ctx.fillStyle = '#ff9900';
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 3; col++) {
+                        ctx.fillRect(
+                            margin + 2 + col * (cellSize + gap),
+                            margin + 2 + row * (cellSize + gap),
+                            cellSize,
+                            cellSize
+                        );
+                    }
+                }
+            } else {
+                // 128x128 详细版
+                const margin = 20;
+                const cellSize = 20;
+                const gap = 5;
+
+                // 白色背景
+                ctx.fillRect(margin, margin, size - margin * 2, size - margin * 2);
+
+                // 绘制3x3网格
+                ctx.fillStyle = '#ff9900';
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 3; col++) {
+                        ctx.fillRect(
+                            margin + 10 + col * (cellSize + gap),
+                            margin + 10 + row * (cellSize + gap),
+                            cellSize,
+                            cellSize
+                        );
+                    }
+                }
+
+                // 添加"A"字母
+                ctx.font = 'bold 40px Arial';
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('A', size - 30, size - 30);
+            }
+        }
+
+        // 下载单个图标
+        function downloadIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = `icon${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // 一键下载所有图标
+        function downloadAll() {
+            setTimeout(() => downloadIcon('icon16', 16), 100);
+            setTimeout(() => downloadIcon('icon48', 48), 300);
+            setTimeout(() => downloadIcon('icon128', 128), 500);
+            alert('正在下载所有图标，请稍候...');
+        }
+
+        // 页面加载时绘制所有图标
+        window.onload = function() {
+            drawIcon('icon16', 16);
+            drawIcon('icon48', 48);
+            drawIcon('icon128', 128);
+        };
+    </script>
+</body>
+</html>

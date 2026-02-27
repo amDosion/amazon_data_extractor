@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Product Data Extractor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #444;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+
+        .log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .log-entry {
+            padding: 5px 0;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .log-entry.success {
+            color: #27ae60;
+        }
+
+        .log-entry.error {
+            color: #e74c3c;
+        }
+
+        .log-entry.info {
+            color: #3498db;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .api-status {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .api-card {
+            padding: 10px;
+            border-radius: 6px;
+            background: #f9f9f9;
+            text-align: center;
+            font-size: 12px;
+        }
+
+        .api-card.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .api-card.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .api-card.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Amazon Product Data Extractor</h1>
+        <p class="subtitle">从Seller Central提取产品数据并生成Excel报表</p>
+
+        <div class="input-group">
+            <label for="asinInput">输入ASIN（支持多个，用逗号分隔）</label>
+            <textarea id="asinInput" placeholder="例如: B0FPQQM2DH, B0DHKVWZH7"></textarea>
+            <p class="hint">提示: 确保您已登录Amazon Seller Central</p>
+        </div>
+
+        <button class="button" id="extractBtn" onclick="startExtraction()">开始提取数据</button>
+
+        <div class="progress" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">准备中...</p>
+        </div>
+
+        <div class="api-status" id="apiStatus">
+            <div class="api-card" id="statusTargets">
+                <div>Targets API</div>
+                <div id="statusTargetsText">等待中</div>
+            </div>
+            <div class="api-card" id="statusV3">
+                <div>Details V3</div>
+                <div id="statusV3Text">等待中</div>
+            </div>
+            <div class="api-card" id="statusV2">
+                <div>Attributes V2</div>
+                <div id="statusV2Text">等待中</div>
+            </div>
+        </div>
+
+        <div class="log" id="logContainer"></div>
+    </div>
+
+    <script>
+        // 日志函数
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            logContainer.style.display = 'block';
+
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 更新进度
+        function updateProgress(percent, text) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+
+            progressContainer.style.display = 'block';
+            progressFill.style.width = percent + '%';
+            progressText.textContent = text;
+        }
+
+        // 更新API状态
+        function updateAPIStatus(api, status, text) {
+            const statusCard = document.getElementById(`status${api}`);
+            const statusText = document.getElementById(`status${api}Text`);
+
+            document.getElementById('apiStatus').style.display = 'grid';
+            statusCard.className = `api-card ${status}`;
+            statusText.textContent = text;
+        }
+
+        // 获取Targets数据
+        async function fetchTargets(asin) {
+            const url = `https://sellercentral.amazon.com/api/experiments/v2/targets?experimentType=TITLE&targetType=ASIN&searchTerms=${asin}`;
+            updateAPIStatus('Targets', 'loading', '请求中...');
+
+            try {
+                const response = await fetch(url, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                updateAPIStatus('Targets', 'success', '✓ 成功');
+                log(`Targets API 调用成功`, 'success');
+                return data;
+            } catch (error) {
+                updateAPIStatus('Targets', 'error', '✗ 失败');
+                log(`Targets API 调用失败: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // 获取Details V3数据
+        async function fetchDetailsV3(asin) {
+            const url = `https://sellercentral.amazon.com/abis/ajax/reconciledDetailsV3?asin=${asin}`;
+            updateAPIStatus('V3', 'loading', '请求中...');
+
+            try {
+                const response = await fetch(url, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                updateAPIStatus('V3', 'success', '✓ 成功');
+                log(`Details V3 API 调用成功`, 'success');
+                return data;
+            } catch (error) {
+                updateAPIStatus('V3', 'error', '✗ 失败');
+                log(`Details V3 API 调用失败: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // 获取Attributes V2数据
+        async function fetchAttributesV2(asin) {
+            const url = `https://sellercentral.amazon.com/abis/ajax/reconciledDetailsV2?asin=${asin}`;
+            updateAPIStatus('V2', 'loading', '请求中...');
+
+            try {
+                const response = await fetch(url, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+                updateAPIStatus('V2', 'success', '✓ 成功');
+                log(`Attributes V2 API 调用成功`, 'success');
+                return data;
+            } catch (error) {
+                updateAPIStatus('V2', 'error', '✗ 失败');
+                log(`Attributes V2 API 调用失败: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // 解析Targets数据为表格行
+        function parseTargetsData(data) {
+            const rows = [];
+
+            if (Array.isArray(data)) {
+                data.forEach(item => {
+                    const info = item.targetInformation || {};
+                    rows.push({
+                        'ASIN': info.target || '',
+                        '产品标题': info.productTitle || '',
+                        '品牌ID': info.brandId || '',
+                        '市场ID': info.marketplaceId || '',
+                        '父ASIN': info.parent || '',
+                        '子变体数量': info.numberOfChildren || 0,
+                        '浏览量': info.glanceViewCount || 0,
+                        '目标状态': item.targetInformation?.targetEligibility?.[0]?.targetStatus || '',
+                        '状态原因': item.targetInformation?.targetEligibility?.[0]?.targetStatusReason || '',
+                        '图片URL': info.imageURL || ''
+                    });
+                });
+            }
+
+            return rows;
+        }
+
+        // 解析Details V3数据为表格行
+        function parseDetailsV3Data(data) {
+            const rows = [{
+                'ASIN': data.asin || '',
+                '当前价格': data.conditionOfferSummaries?.[0]?.landedPrice?.itemPrice || '',
+                '运费': data.conditionOfferSummaries?.[0]?.landedPrice?.shippingPrice || '',
+                '卖家数量': data.conditionOfferSummaries?.[0]?.offerCount || 0,
+                '销售排名': data.salesRank || '',
+                '产品类型': data.productType || '',
+                '评论数': data.detailPageSummary?.customerReviewSummary?.reviewCount || '',
+                '评分': data.detailPageSummary?.customerReviewSummary?.reviewStars || '',
+                '大类排名': data.detailPageSummary?.salesRanks?.[0]?.rank || '',
+                '大类名称': data.detailPageSummary?.salesRanks?.[0]?.storeContextName || '',
+                '小类排名': data.detailPageSummary?.salesRanks?.[1]?.rank || '',
+                '小类名称': data.detailPageSummary?.salesRanks?.[1]?.storeContextName || '',
+                '产品详情页': data.detailPageSummary?.detailPageLink || '',
+                '图片URL': data.imageUrl || ''
+            }];
+
+            return rows;
+        }
+
+        // 解析Attributes V2数据为表格行
+        function parseAttributesV2Data(data) {
+            const dlr = data.detailPageListingResponse || {};
+            const rows = [{
+                'ASIN': '',
+                '品牌': dlr['brand#1.value']?.value || '',
+                '商品名称': dlr['item_name#1.value']?.value || '',
+                '颜色': dlr['color#1.value']?.value || '',
+                '尺码': dlr['apparel_size#1.size']?.value || '',
+                '尺码范围': dlr['apparel_size#1.size_to']?.value || '',
+                '材料': dlr['material#1.value']?.value || '',
+                '面料类型': dlr['fabric_type#1.value']?.value || '',
+                '面料弹性': dlr['apparel_fabric_stretch#1.value']?.value || '',
+                '面料重量': dlr['apparel_fabric_weight_class#1.value']?.value || '',
+                '单位计数': dlr['unit_count#1.value']?.value || '',
+                '单位类型': dlr['unit_count#1.type.value']?.value || '',
+                '包装长度': dlr['item_package_dimensions#1.length.value']?.value || '',
+                '包装宽度': dlr['item_package_dimensions#1.width.value']?.value || '',
+                '包装高度': dlr['item_package_dimensions#1.height.value']?.value || '',
+                '包装重量': dlr['item_package_weight#1.value']?.value || '',
+                '原价': dlr['list_price#1.value']?.value || '',
+                'UPC': dlr['externally_assigned_product_identifier#1.value']?.value || '',
+                '产品发布日期': dlr['product_site_launch_date#1.value']?.value || '',
+                '保养说明': dlr['care_instructions#1.value']?.value || '',
+                '特殊功能': dlr['special_feature#1.value']?.value || '',
+                '风格': dlr['style#1.value']?.value || '',
+                '图案': dlr['pattern#1.value']?.value || '',
+                '部门': dlr['department#1.value']?.value || '',
+                '目标性别': dlr['target_gender#1.value']?.value || '',
+                '年龄范围': dlr['age_range_description#1.value']?.value || '',
+                '主图URL': dlr['detail_page_primary_image_url']?.value || ''
+            }];
+
+            return rows;
+        }
+
+        // 生成Excel文件
+        function generateExcel(asin, targetsData, detailsV3Data, attributesV2Data) {
+            log('正在生成Excel文件...', 'info');
+
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+
+            // Sheet 1: Targets
+            const targetsRows = parseTargetsData(targetsData);
+            const ws1 = XLSX.utils.json_to_sheet(targetsRows);
+            XLSX.utils.book_append_sheet(wb, ws1, 'Targets Data');
+
+            // Sheet 2: Details V3
+            const detailsRows = parseDetailsV3Data(detailsV3Data);
+            const ws2 = XLSX.utils.json_to_sheet(detailsRows);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Product Details V3');
+
+            // Sheet 3: Attributes V2
+            const attributesRows = parseAttributesV2Data(attributesV2Data);
+            const ws3 = XLSX.utils.json_to_sheet(attributesRows);
+            XLSX.utils.book_append_sheet(wb, ws3, 'Product Attributes V2');
+
+            // 生成文件名
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `Amazon_Data_${asin}_${timestamp}.xlsx`;
+
+            // 下载文件
+            XLSX.writeFile(wb, filename);
+            log(`Excel文件已生成: ${filename}`, 'success');
+        }
+
+        // 主提取函数
+        async function startExtraction() {
+            const asinInput = document.getElementById('asinInput').value.trim();
+            const extractBtn = document.getElementById('extractBtn');
+
+            if (!asinInput) {
+                alert('请输入至少一个ASIN');
+                return;
+            }
+
+            // 清空日志
+            document.getElementById('logContainer').innerHTML = '';
+
+            // 解析ASIN列表
+            const asins = asinInput.split(',').map(a => a.trim()).filter(a => a);
+            log(`准备提取 ${asins.length} 个ASIN的数据`, 'info');
+
+            // 禁用按钮
+            extractBtn.disabled = true;
+
+            for (let i = 0; i < asins.length; i++) {
+                const asin = asins[i];
+                const progressPercent = ((i) / asins.length) * 100;
+
+                updateProgress(progressPercent, `处理 ${i + 1}/${asins.length}: ${asin}`);
+                log(`开始处理 ASIN: ${asin}`, 'info');
+
+                try {
+                    // 并行调用三个API
+                    const [targetsData, detailsV3Data, attributesV2Data] = await Promise.all([
+                        fetchTargets(asin),
+                        fetchDetailsV3(asin),
+                        fetchAttributesV2(asin)
+                    ]);
+
+                    // 生成Excel
+                    generateExcel(asin, targetsData, detailsV3Data, attributesV2Data);
+
+                    log(`✓ ${asin} 处理完成`, 'success');
+
+                } catch (error) {
+                    log(`✗ ${asin} 处理失败: ${error.message}`, 'error');
+                }
+
+                // 每个ASIN之间延迟一下，避免请求过快
+                if (i < asins.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+
+            // 完成
+            updateProgress(100, `完成！已处理 ${asins.length} 个ASIN`);
+            extractBtn.disabled = false;
+            log('所有任务已完成', 'success');
+        }
+
+        // 回车键快捷提交
+        document.getElementById('asinInput').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                startExtraction();
+            }
+        });
+    </script>
+</body>
+</html>

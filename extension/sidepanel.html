@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon Seller Automation</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>Seller Automation</h1>
+      <p>多功能侧边菜单，可持续扩展新模块。</p>
+    </div>
+    <span id="runState" class="state idle">Idle</span>
+  </header>
+
+  <div class="app-shell">
+    <main class="views">
+    <section class="view active" id="view-orders">
+      <article class="card">
+        <h2>订单报告下载</h2>
+        <label class="field">
+          <span>日期预设</span>
+          <select id="datePreset">
+            <option value="LAST_1_DAY">近 1 天</option>
+            <option value="LAST_7_DAYS">近 7 天</option>
+            <option value="LAST_30_DAYS">近 30 天</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>文件名前缀</span>
+          <input id="reportNamePrefix" type="text" maxlength="40" placeholder="orders-report" />
+        </label>
+
+        <label class="field checkbox">
+          <input id="closeTabAfterRun" type="checkbox" checked />
+          <span>执行后自动关闭自动化标签页</span>
+        </label>
+
+        <div class="actions">
+          <button id="saveOrdersSettings" class="secondary">保存设置</button>
+          <button id="runNow" class="primary">立即下载订单报告</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>定时执行</h2>
+        <label class="field checkbox">
+          <input id="schedulerEnabled" type="checkbox" />
+          <span>开启周期执行</span>
+        </label>
+
+        <label class="field">
+          <span>执行间隔（小时）</span>
+          <input id="everyHours" type="number" min="1" max="24" step="1" value="12" />
+        </label>
+
+        <button id="saveSchedule" class="secondary full">保存定时配置</button>
+      </article>
+    </section>
+
+    <section class="view" id="view-products">
+      <article class="card">
+        <h2>产品数据提取</h2>
+
+        <label class="field">
+          <span>ASIN 列表（逗号/换行分隔）</span>
+          <textarea id="asinInput" rows="5" placeholder="B0FPQQM2DH, B0DHKVWZH7"></textarea>
+        </label>
+
+        <div class="actions">
+          <button id="detectAsinBtn" class="secondary">识别当前页 ASIN</button>
+          <button id="extractProductsBtn" class="primary">开始提取并导出 CSV</button>
+        </div>
+
+        <label class="field">
+          <span>字段预设</span>
+          <select id="fieldPreset">
+            <option value="minimal">最小核心集</option>
+            <option value="standard">标准运营集</option>
+            <option value="complete" selected>完整数据集</option>
+            <option value="listingOptimization">Listing优化</option>
+            <option value="competitorAnalysis">竞品分析</option>
+            <option value="fbaCalculation">FBA计算</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>请求间隔（秒）</span>
+          <input id="requestIntervalSec" type="number" min="0.5" max="10" step="0.5" value="1" />
+        </label>
+
+        <p class="note">需要当前活动标签页处于 Seller Central 并已登录。</p>
+      </article>
+    </section>
+
+    <section class="view" id="view-ai">
+      <article class="card ai-chat-shell">
+        <header class="ai-head">
+          <h2>AI Chat</h2>
+          <p>对话风格已优化为主聊天区，Key 在“设置”页面维护。</p>
+        </header>
+
+        <div id="aiMessages" class="ai-messages"></div>
+
+        <div class="ai-compose-wrap">
+          <div class="ai-compose-tools">
+            <label class="ai-inline-field">
+              <span>Provider</span>
+              <select id="aiProviderSelect">
+                <option value="deepseek">DeepSeek</option>
+                <option value="gemini">Gemini</option>
+                <option value="qwen">Qwen</option>
+              </select>
+            </label>
+            <label class="ai-inline-field">
+              <span>Model</span>
+              <input id="aiModelInput" type="text" placeholder="deepseek-chat" />
+            </label>
+            <label class="ai-inline-field">
+              <span>Role</span>
+              <select id="aiRoleSelect">
+                <option value="general">通用</option>
+                <option value="operationsConsultant">运营策略顾问</option>
+                <option value="listingOptimizer">Listing优化师</option>
+                <option value="adsSpecialist">广告投放专家</option>
+                <option value="fbaProfitAnalyst">FBA利润分析师</option>
+                <option value="complianceAdvisor">合规风控顾问</option>
+                <option value="customerServiceCoach">客服沟通教练</option>
+              </select>
+            </label>
+          </div>
+          <div class="ai-options-row">
+            <label class="ai-toggle">
+              <input id="aiShowReasoning" type="checkbox" checked />
+              <span>输出推理过程</span>
+            </label>
+          </div>
+
+          <div class="ai-compose">
+            <textarea id="aiInput" rows="3" placeholder="输入你的问题，例如：分析这个ASIN的卖点和风险"></textarea>
+            <input id="aiFileInput" type="file" multiple hidden />
+            <div id="aiAttachmentList" class="ai-attachments"></div>
+            <div class="ai-actions">
+              <div class="ai-actions-left">
+                <button id="aiAttachBtn" class="ghost">附件</button>
+              </div>
+              <div class="ai-actions-right">
+                <button id="aiClearBtn" class="ghost">清空对话</button>
+                <button id="aiSendBtn" class="primary">发送</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="view" id="view-roles">
+      <article class="card roles-shell">
+        <header class="roles-head">
+          <h2>AI 角色</h2>
+          <p>单独管理角色。选择“通用”即全能模式。</p>
+        </header>
+
+        <div class="roles-layout">
+          <div class="roles-list-panel">
+            <div class="roles-list-head">
+              <h3>角色列表</h3>
+              <button id="rolesAddBtn" class="secondary">新增</button>
+            </div>
+            <div id="rolesList" class="roles-list"></div>
+          </div>
+
+          <form id="roleEditorForm" class="roles-editor">
+            <input id="roleEditorOriginalId" type="hidden" />
+
+            <label class="field">
+              <span>角色 ID</span>
+              <input id="roleEditorId" type="text" maxlength="40" placeholder="例如: listing-strategist" />
+            </label>
+
+            <label class="field">
+              <span>角色名称</span>
+              <input id="roleEditorName" type="text" maxlength="40" placeholder="例如: Listing策略师" />
+            </label>
+
+            <label class="field">
+              <span>默认角色</span>
+              <select id="rolesDefaultRoleSelect"></select>
+            </label>
+
+            <label class="field">
+              <span>角色提示词</span>
+              <textarea id="roleEditorPrompt" rows="7" placeholder="输入角色提示词"></textarea>
+            </label>
+
+            <div class="roles-actions">
+              <button id="rolesSaveBtn" class="primary" type="submit">保存</button>
+              <button id="rolesDeleteBtn" class="ghost" type="button">删除</button>
+              <button id="rolesCancelBtn" class="secondary" type="button">取消</button>
+            </div>
+          </form>
+        </div>
+      </article>
+    </section>
+
+    <section class="view" id="view-logs">
+      <article class="card logs">
+        <div class="logs-header">
+          <h2>运行日志</h2>
+          <div>
+            <button id="refreshLogs" class="ghost">刷新</button>
+            <button id="clearLogs" class="ghost">清空</button>
+          </div>
+        </div>
+        <div id="logsList" class="logs-list"></div>
+      </article>
+    </section>
+
+    <section class="view" id="view-modules">
+      <article class="card">
+        <h2>模块路线图</h2>
+        <ul class="roadmap">
+          <li><strong>Orders:</strong> 已上线</li>
+          <li><strong>Product Extraction:</strong> 已上线</li>
+          <li><strong>Ads Reports:</strong> 预留扩展位</li>
+          <li><strong>Payments Request:</strong> 预留扩展位</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="view" id="view-settings">
+      <article class="card settings-shell">
+        <header class="settings-head">
+          <h2>系统设置</h2>
+          <p>统一维护订单服务模式、AI 提供商与 API Key。</p>
+        </header>
+
+        <section class="settings-group">
+          <h3>订单报告服务（无头浏览器）</h3>
+          <div class="settings-grid">
+            <label class="field">
+              <span>运行模式</span>
+              <select id="settingsOrdersMode">
+                <option value="extension">浏览器内自动化（当前模式）</option>
+                <option value="headless-service">无头服务模式（推荐后端）</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>服务地址</span>
+              <input id="settingsServiceEndpoint" type="text" placeholder="http://127.0.0.1:8787" />
+            </label>
+            <label class="field">
+              <span>服务 API Key</span>
+              <input id="settingsServiceApiKey" type="password" autocomplete="off" placeholder="可选" />
+            </label>
+            <label class="field">
+              <span>服务超时（毫秒）</span>
+              <input id="settingsServiceTimeoutMs" type="number" min="30000" max="600000" step="1000" value="180000" />
+            </label>
+            <label class="field">
+              <span>下载目录</span>
+              <input id="settingsServiceDownloadDir" type="text" placeholder="amazon" />
+            </label>
+          </div>
+          <div class="settings-actions-row">
+            <button id="settingsTestServiceBtn" class="secondary">测试服务连接</button>
+            <span id="settingsServiceStatus" class="note">尚未测试</span>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <h3>AI 默认参数</h3>
+          <div class="settings-grid">
+            <label class="field">
+              <span>默认 AI Provider</span>
+              <select id="settingsDefaultProvider">
+                <option value="deepseek">DeepSeek</option>
+                <option value="gemini">Gemini</option>
+                <option value="qwen">Qwen</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Temperature</span>
+              <input id="settingsTemperature" type="number" min="0" max="2" step="0.1" value="0.3" />
+            </label>
+            <label class="field">
+              <span>历史上下文条数</span>
+              <input id="settingsMaxHistory" type="number" min="2" max="40" step="1" value="12" />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <h3>模型与 Key</h3>
+          <div class="settings-grid">
+            <label class="field">
+              <span>DeepSeek Model</span>
+              <input id="settingsModelDeepseek" type="text" placeholder="deepseek-chat" />
+            </label>
+            <label class="field">
+              <span>Gemini Model</span>
+              <input id="settingsModelGemini" type="text" placeholder="gemini-2.5-flash" />
+            </label>
+            <label class="field">
+              <span>Qwen Model</span>
+              <input id="settingsModelQwen" type="text" placeholder="qwen-plus" />
+            </label>
+            <label class="field">
+              <span>DeepSeek Key</span>
+              <input id="settingsKeyDeepseek" type="password" autocomplete="off" placeholder="sk-..." />
+            </label>
+            <label class="field">
+              <span>Gemini Key</span>
+              <input id="settingsKeyGemini" type="password" autocomplete="off" placeholder="AIza..." />
+            </label>
+            <label class="field">
+              <span>Qwen Key</span>
+              <input id="settingsKeyQwen" type="password" autocomplete="off" placeholder="sk-..." />
+            </label>
+          </div>
+        </section>
+
+        <div class="settings-footer">
+          <button id="settingsSaveBtn" class="primary">保存系统设置</button>
+        </div>
+      </article>
+    </section>
+    </main>
+
+    <aside class="menu" id="menu">
+      <button class="menu-btn active" data-view="orders">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16v4H4z"></path>
+            <path d="M4 10h16v10H4z"></path>
+            <path d="M8 14h8"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">订单报告</span>
+      </button>
+      <button class="menu-btn" data-view="products">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7l8-4 8 4-8 4-8-4z"></path>
+            <path d="M4 7v10l8 4 8-4V7"></path>
+            <path d="M12 11v10"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">产品提取</span>
+      </button>
+      <button class="menu-btn" data-view="ai">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5h16v10H8l-4 4V5z"></path>
+            <path d="M8 9h8"></path>
+            <path d="M8 12h6"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">AI Chat</span>
+      </button>
+      <button class="menu-btn" data-view="roles">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"></path>
+            <path d="M4 20a8 8 0 0 1 16 0"></path>
+            <path d="M18 5h3"></path>
+            <path d="M19.5 3.5v3"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">AI 角色</span>
+      </button>
+      <button class="menu-btn" data-view="logs">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <path d="M8 9h8"></path>
+            <path d="M8 13h8"></path>
+            <path d="M8 17h5"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">运行日志</span>
+      </button>
+      <button class="menu-btn" data-view="settings">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.54V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.54 1.7 1.7 0 0 0-1.87.34l-.06.06A2 2 0 0 1 4.28 17l.06-.06A1.7 1.7 0 0 0 4.68 15a1.7 1.7 0 0 0-1.54-1H3a2 2 0 0 1 0-4h.14a1.7 1.7 0 0 0 1.54-1 1.7 1.7 0 0 0-.34-1.87L4.28 7A2 2 0 1 1 7.1 4.17l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.54V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.54h.07a1.7 1.7 0 0 0 1.87-.34l.06-.06A2 2 0 1 1 19.77 7l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.54 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.54 1z"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">设置</span>
+      </button>
+      <button class="menu-btn" data-view="modules">
+        <span class="menu-btn-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 6h5v5H6z"></path>
+            <path d="M13 6h5v5h-5z"></path>
+            <path d="M6 13h5v5H6z"></path>
+            <path d="M13 13h5v5h-5z"></path>
+          </svg>
+        </span>
+        <span class="menu-btn-label">扩展路线</span>
+      </button>
+    </aside>
+  </div>
+
+  <footer class="footer">
+    <span id="statusText">准备就绪</span>
+  </footer>
+
+  <script src="field_config.js"></script>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

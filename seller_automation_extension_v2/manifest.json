@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon Seller Automation (V2)",
+  "version": "2.0.0",
+  "description": "Automate Seller Central order report downloads with scheduler-ready module architecture.",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "downloads",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://sellercentral.amazon.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Seller Automation"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sellercentral.amazon.com/order-reports-and-feeds/reports/allOrders*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "minimum_chrome_version": "116"
+}

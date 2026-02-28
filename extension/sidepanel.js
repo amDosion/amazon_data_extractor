@@ -2490,7 +2490,7 @@ function wait(ms) {
 // =====================================================
 // ===== 广告报告模块 =====
 // =====================================================
-const adsState = { data: [], summary: null };
+const adsState = { data: null, campaigns: [], summary: null };
 
 async function extractAdsData() {
   setStatus("正在提取广告数据...");
@@ -2502,31 +2502,53 @@ async function extractAdsData() {
     const asinFilter = document.getElementById("adsAsinFilter")?.value?.trim() || "";
 
     const response = await sendToContent(tab.id, {
-      action: "product.fetchApis",
-      payload: { asin: asinFilter.split(",")[0]?.trim() || "B0000000XX" }
+      action: "ads.fetchReport",
+      payload: { reportType, dateRange, asinFilter }
     });
 
-    // Simulate ads metrics from available data
-    const spend = (Math.random() * 500 + 100).toFixed(2);
-    const sales = (parseFloat(spend) * (1.5 + Math.random() * 3)).toFixed(2);
-    const acos = ((parseFloat(spend) / parseFloat(sales)) * 100).toFixed(1);
-    const roas = (parseFloat(sales) / parseFloat(spend)).toFixed(2);
+    adsState.data = response;
+    adsState.campaigns = response.campaigns || [];
+    adsState.summary = response.summary || {};
 
-    adsState.summary = { spend, sales, acos, roas, reportType, dateRange };
-    document.getElementById("adsTotalSpend").textContent = `$${spend}`;
-    document.getElementById("adsTotalSales").textContent = `$${sales}`;
-    document.getElementById("adsAcos").textContent = `${acos}%`;
-    document.getElementById("adsRoas").textContent = `${roas}x`;
+    const s = adsState.summary;
+    document.getElementById("adsTotalSpend").textContent = `$${(s.totalSpend || 0).toFixed(2)}`;
+    document.getElementById("adsTotalSales").textContent = `$${(s.totalSales || 0).toFixed(2)}`;
+    document.getElementById("adsAcos").textContent = `${(s.acos || 0).toFixed(1)}%`;
+    document.getElementById("adsRoas").textContent = `${(s.roas || 0).toFixed(2)}x`;
 
     const summaryEl = document.getElementById("adsSummary");
+    const source = response.source || "unknown";
+    const campaignCount = adsState.campaigns.length;
     if (summaryEl) {
-      summaryEl.textContent = `已提取 ${reportType.toUpperCase()} 广告数据 (${dateRange})，共覆盖 ${asinFilter ? asinFilter.split(",").length : "全部"} 个 ASIN。`;
+      const lines = [
+        `数据来源: ${source === "api" ? "Seller Central API" : source === "dom" ? "页面DOM提取" : "暂无数据"}`,
+        `报告类型: ${reportType.toUpperCase()} | 时间范围: ${dateRange}`,
+        `广告活动数: ${campaignCount}`
+      ];
+      if (s.totalClicks > 0) lines.push(`点击: ${s.totalClicks} | CTR: ${s.ctr}% | CPC: $${s.cpc}`);
+      if (s.totalImpressions > 0) lines.push(`展示: ${s.totalImpressions.toLocaleString()}`);
+      if (campaignCount > 0) {
+        lines.push("", "--- 广告活动明细 ---");
+        for (const c of adsState.campaigns.slice(0, 10)) {
+          lines.push(`${c.name || "未命名"}: 花费$${c.spend.toFixed(2)} 销售$${c.sales.toFixed(2)} ACOS:${c.acos.toFixed(1)}%`);
+        }
+        if (campaignCount > 10) lines.push(`... 还有 ${campaignCount - 10} 个活动`);
+      }
+      if (source === "unavailable") {
+        lines.push("", "提示: 请确保当前标签页在 Seller Central 广告管理页面。");
+        lines.push("或者手动导出广告报告后通过 AI Chat 进行分析。");
+      }
+      summaryEl.textContent = lines.join("\n");
     }
 
-    setStatus("广告数据提取完成");
-    await appendRuntimeLog("success", "ads", "Ads data extracted", { reportType, dateRange });
+    setStatus(`广告数据提取完成 (来源: ${source})`);
+    await appendRuntimeLog("success", "ads", "Ads data extracted", { reportType, dateRange, source, campaigns: campaignCount });
   } catch (error) {
     setStatus(`广告数据提取失败: ${error.message}`);
+    const summaryEl = document.getElementById("adsSummary");
+    if (summaryEl) {
+      summaryEl.textContent = `提取失败: ${error.message}\n\n替代方案:\n1. 确保已登录 Seller Central\n2. 导航到广告管理页面后重试\n3. 或手动导出报告，通过 AI Chat 附件上传分析`;
+    }
     await appendRuntimeLog("error", "ads", "Ads extraction failed", { error: error.message });
   } finally {
     setBusy(false);
@@ -2534,84 +2556,110 @@ async function extractAdsData() {
 }
 
 async function exportAdsData() {
-  if (!adsState.summary) {
+  if (!adsState.summary && adsState.campaigns.length === 0) {
     setStatus("请先提取广告数据");
     return;
   }
-  const csv = "Report Type,Date Range,Total Spend,Total Sales,ACOS,ROAS\n" +
-    `${adsState.summary.reportType},${adsState.summary.dateRange},$${adsState.summary.spend},$${adsState.summary.sales},${adsState.summary.acos}%,${adsState.summary.roas}x`;
+  const s = adsState.summary || {};
+  let csv = "Campaign,Status,Spend,Sales,ACOS,Impressions,Clicks\n";
+  if (adsState.campaigns.length > 0) {
+    for (const c of adsState.campaigns) {
+      csv += `"${(c.name || "").replace(/"/g, '""')}",${c.status || ""},${c.spend.toFixed(2)},${c.sales.toFixed(2)},${c.acos.toFixed(1)}%,${c.impressions || 0},${c.clicks || 0}\n`;
+    }
+  } else {
+    csv += `Summary,,${(s.totalSpend || 0).toFixed(2)},${(s.totalSales || 0).toFixed(2)},${(s.acos || 0).toFixed(1)}%,${s.totalImpressions || 0},${s.totalClicks || 0}\n`;
+  }
   const filename = `ads-report-${Date.now()}.csv`;
   await downloadCsv(csv, filename);
   setStatus(`广告报告已导出: ${filename}`);
 }
 
 async function aiAnalyzeAds() {
-  if (!adsState.summary) {
-    setStatus("请先提取广告数据");
-    return;
+  const s = adsState.summary;
+  if (!s) {
+    setStatus("请先提取广告数据，或直接描述你的广告情况");
   }
-  const prompt = `请分析以下亚马逊广告数据并给出优化建议：\n报告类型: ${adsState.summary.reportType}\n时间范围: ${adsState.summary.dateRange}\n总花费: $${adsState.summary.spend}\n总销售额: $${adsState.summary.sales}\nACOS: ${adsState.summary.acos}%\nROAS: ${adsState.summary.roas}x`;
+  let prompt = "请分析以下亚马逊广告数据并给出优化建议：\n\n";
+  if (s) {
+    prompt += `总花费: $${(s.totalSpend || 0).toFixed(2)}\n总销售额: $${(s.totalSales || 0).toFixed(2)}\nACOS: ${(s.acos || 0).toFixed(1)}%\nROAS: ${(s.roas || 0).toFixed(2)}x\n`;
+    if (s.totalClicks > 0) prompt += `点击: ${s.totalClicks} | CTR: ${s.ctr}% | CPC: $${s.cpc}\n`;
+    if (s.totalImpressions > 0) prompt += `展示: ${s.totalImpressions.toLocaleString()}\n`;
+  }
+  if (adsState.campaigns.length > 0) {
+    prompt += "\n广告活动明细:\n";
+    for (const c of adsState.campaigns.slice(0, 20)) {
+      prompt += `- ${c.name}: 花费$${c.spend.toFixed(2)} 销售$${c.sales.toFixed(2)} ACOS:${c.acos.toFixed(1)}%\n`;
+    }
+  }
+  prompt += "\n请给出：1) 整体诊断 2) 高花费低转化活动识别 3) 预算优化建议 4) 关键词策略 5) P0/P1/P2行动计划";
+
   switchView("ai");
-  if (document.getElementById("aiInput")) {
-    document.getElementById("aiInput").value = prompt;
-  }
-  if (document.getElementById("aiRoleSelect")) {
-    document.getElementById("aiRoleSelect").value = "adsspecialist";
-  }
+  if (document.getElementById("aiInput")) document.getElementById("aiInput").value = prompt;
+  if (document.getElementById("aiRoleSelect")) document.getElementById("aiRoleSelect").value = "adsspecialist";
   setStatus("已切换到 AI Chat，请点击发送进行广告分析");
 }
 
 // =====================================================
 // ===== 库存监控模块 =====
 // =====================================================
-const inventoryState = { data: null };
+const inventoryState = { data: null, items: [] };
 
 async function fetchInventoryData() {
   setStatus("正在获取库存数据...");
   setBusy(true);
   try {
     const input = document.getElementById("inventoryAsinInput")?.value || "";
-    const items = input.split(/[\n,;\s]+/).filter(Boolean);
-    if (items.length === 0) {
-      throw new Error("请输入至少一个 ASIN 或 SKU");
-    }
+    const filterItems = input.split(/[\n,;\s]+/).filter(Boolean);
 
-    // Simulate inventory data
-    const available = Math.floor(Math.random() * 500 + 50);
-    const inbound = Math.floor(Math.random() * 200);
-    const dailySales = Math.floor(Math.random() * 20 + 5);
-    const daysOfSupply = dailySales > 0 ? Math.floor(available / dailySales) : 999;
-    const alertLevel = daysOfSupply < 14 ? "紧急补货" : daysOfSupply < 30 ? "建议补货" : "库存充足";
+    const tab = await ensureSellerTabForProductFlow();
+    const response = await sendToContent(tab.id, {
+      action: "inventory.fetch",
+      payload: { items: filterItems }
+    });
 
-    inventoryState.data = { available, inbound, daysOfSupply, alertLevel, items };
-    document.getElementById("invAvailable").textContent = available.toLocaleString();
-    document.getElementById("invInbound").textContent = inbound.toLocaleString();
-    document.getElementById("invDaysOfSupply").textContent = `${daysOfSupply} 天`;
-    document.getElementById("invAlert").textContent = alertLevel;
+    inventoryState.data = response;
+    inventoryState.items = response.items || [];
+    const s = response.summary || {};
+
+    document.getElementById("invAvailable").textContent = (s.totalAvailable || 0).toLocaleString();
+    document.getElementById("invInbound").textContent = (s.totalInbound || 0).toLocaleString();
+    document.getElementById("invDaysOfSupply").textContent = s.avgDaysOfSupply > 0 ? `${s.avgDaysOfSupply} 天` : "--";
+
+    const alertText = s.lowStockCount > 0 ? `${s.lowStockCount} 个低库存` : "库存充足";
+    document.getElementById("invAlert").textContent = alertText;
 
     const alertZone = document.getElementById("invAlertZone");
     if (alertZone) {
-      alertZone.classList.toggle("warn-zone", daysOfSupply < 30);
-      alertZone.classList.toggle("highlight-green", daysOfSupply >= 30);
+      alertZone.classList.toggle("warn-zone", s.lowStockCount > 0);
+      alertZone.classList.toggle("highlight-green", s.lowStockCount === 0);
     }
 
-    setStatus(`库存数据已获取，覆盖 ${items.length} 个商品`);
-    await appendRuntimeLog("success", "inventory", "Inventory data fetched", { count: items.length });
+    setStatus(`库存数据已获取 (来源: ${response.source}, ${inventoryState.items.length} 个商品)`);
+    await appendRuntimeLog("success", "inventory", "Inventory data fetched", { source: response.source, count: inventoryState.items.length });
   } catch (error) {
     setStatus(`库存获取失败: ${error.message}`);
+    await appendRuntimeLog("error", "inventory", "Inventory fetch failed", { error: error.message });
   } finally {
     setBusy(false);
   }
 }
 
 async function exportInventoryData() {
-  if (!inventoryState.data) {
-    setStatus("请先获取库存数据");
-    return;
+  if (!inventoryState.items || inventoryState.items.length === 0) {
+    if (!inventoryState.data?.summary) {
+      setStatus("请先获取库存数据");
+      return;
+    }
   }
-  const d = inventoryState.data;
-  const csv = "可售库存,入库中,预计可售天数,补货预警\n" +
-    `${d.available},${d.inbound},${d.daysOfSupply},${d.alertLevel}`;
+  let csv = "ASIN,SKU,Title,Available,Inbound,Reserved,Unfulfillable,Days of Supply\n";
+  if (inventoryState.items.length > 0) {
+    for (const item of inventoryState.items) {
+      csv += `${item.asin},"${(item.sku || "").replace(/"/g, '""')}","${(item.title || "").replace(/"/g, '""')}",${item.available},${item.inbound},${item.reserved},${item.unfulfillable},${item.daysOfSupply}\n`;
+    }
+  } else {
+    const s = inventoryState.data.summary;
+    csv += `Summary,,Total,${s.totalAvailable},${s.totalInbound},${s.totalReserved},${s.totalUnfulfillable},${s.avgDaysOfSupply}\n`;
+  }
   const filename = `inventory-${Date.now()}.csv`;
   await downloadCsv(csv, filename);
   setStatus(`库存报告已导出: ${filename}`);
@@ -2621,12 +2669,13 @@ function calcRestockQuantity() {
   const dailySales = Number(document.getElementById("invDailySales")?.value || 10);
   const leadTime = Number(document.getElementById("invLeadTime")?.value || 30);
   const safetyDays = Number(document.getElementById("invSafetyDays")?.value || 7);
-  const currentStock = inventoryState.data?.available || 0;
-  const inbound = inventoryState.data?.inbound || 0;
+  const currentStock = inventoryState.data?.summary?.totalAvailable || 0;
+  const inbound = inventoryState.data?.summary?.totalInbound || 0;
 
   const totalNeeded = dailySales * (leadTime + safetyDays);
   const reorderQty = Math.max(0, totalNeeded - currentStock - inbound);
   const reorderPoint = dailySales * (leadTime + safetyDays);
+  const stockoutDate = dailySales > 0 ? Math.floor((currentStock + inbound) / dailySales) : 999;
 
   const resultEl = document.getElementById("invRestockResult");
   if (resultEl) {
@@ -2635,10 +2684,12 @@ function calcRestockQuantity() {
       `补货周期: ${leadTime} 天 | 安全库存: ${safetyDays} 天`,
       `总需求量: ${totalNeeded} 件`,
       `当前可用: ${currentStock} 件 | 在途: ${inbound} 件`,
+      `预计断货日: ${stockoutDate} 天后`,
       `━━━━━━━━━━━━━━━━━━`,
       `建议补货量: ${reorderQty} 件`,
-      `补货触发点: 库存低于 ${reorderPoint} 件时下单`
-    ].join("\n");
+      `补货触发点: 库存低于 ${reorderPoint} 件时下单`,
+      stockoutDate < leadTime ? `⚠️ 警告: 预计断货日(${stockoutDate}天)早于补货周期(${leadTime}天)，请立即补货！` : ""
+    ].filter(Boolean).join("\n");
   }
   setStatus("补货计算完成");
 }
@@ -2664,30 +2715,32 @@ function calcProfit() {
   }
 
   const referralFee = price * (referralPct / 100);
-  const returnLoss = price * (returnRate / 100) * 0.5; // Assume 50% loss on returns
+  const returnLoss = price * (returnRate / 100) * 0.5;
   const totalCost = cogs + shipping + fbaFee + referralFee + storageFee + adsCost + returnLoss;
   const netProfit = price - totalCost;
   const margin = ((netProfit / price) * 100).toFixed(1);
   const roi = totalCost > 0 ? ((netProfit / totalCost) * 100).toFixed(1) : "N/A";
-  const breakeven = totalCost / (1 - referralPct / 100);
+  // Breakeven: price at which net profit = 0, accounting for referral %
+  const fixedCosts = cogs + shipping + fbaFee + storageFee + adsCost + returnLoss;
+  const breakeven = (1 - referralPct / 100) > 0 ? (fixedCosts / (1 - referralPct / 100)).toFixed(2) : "N/A";
+  const dailySalesEst = Number(document.getElementById("profitDailySales")?.value || 0);
+  const monthlyProfit = dailySalesEst > 0 ? (netProfit * dailySalesEst * 30).toFixed(2) : null;
 
-  lastProfitCalc = { price, cogs, shipping, fbaFee, referralFee, storageFee, adsCost, returnLoss, totalCost, netProfit, margin, roi, breakeven };
+  lastProfitCalc = { price, cogs, shipping, fbaFee, referralFee, storageFee, adsCost, returnLoss, totalCost, netProfit, margin, roi, breakeven, dailySalesEst, monthlyProfit };
 
-  document.getElementById("profitReferralVal").textContent = `$${referralFee.toFixed(2)}`;
-  document.getElementById("profitTotalCost").textContent = `$${totalCost.toFixed(2)}`;
-  document.getElementById("profitNetProfit").textContent = `$${netProfit.toFixed(2)}`;
+  document.getElementById("profitReferralVal").textContent = `${referralFee.toFixed(2)}`;
+  document.getElementById("profitTotalCost").textContent = `${totalCost.toFixed(2)}`;
+  document.getElementById("profitNetProfit").textContent = `${netProfit.toFixed(2)}`;
   document.getElementById("profitMargin").textContent = `${margin}%`;
-  document.getElementById("profitBreakeven").textContent = `$${breakeven.toFixed(2)}`;
+  document.getElementById("profitBreakeven").textContent = breakeven === "N/A" ? breakeven : `$${breakeven}`;
   document.getElementById("profitRoi").textContent = roi === "N/A" ? roi : `${roi}%`;
 
   const resultCard = document.getElementById("profitResultCard");
-  if (resultCard) {
-    resultCard.style.display = "";
-  }
+  if (resultCard) resultCard.style.display = "";
 
   const breakdown = document.getElementById("profitBreakdown");
   if (breakdown) {
-    breakdown.textContent = [
+    const lines = [
       `费用明细:`,
       `  商品成本: $${cogs.toFixed(2)}`,
       `  头程运费: $${shipping.toFixed(2)}`,
@@ -2697,17 +2750,24 @@ function calcProfit() {
       `  广告费: $${adsCost.toFixed(2)}`,
       `  退货损失 (${returnRate}%): $${returnLoss.toFixed(2)}`,
       `  ─────────────────`,
-      `  总成本: $${totalCost.toFixed(2)} | 净利润: $${netProfit.toFixed(2)}`
-    ].join("\n");
+      `  总成本: $${totalCost.toFixed(2)} | 净利润: $${netProfit.toFixed(2)}`,
+      `  保本售价: $${breakeven}`
+    ];
+    if (monthlyProfit !== null) {
+      lines.push(`  预估月利润 (${dailySalesEst}单/天): $${monthlyProfit}`);
+    }
+    breakdown.textContent = lines.join("\n");
   }
 
+  // Profit/loss visual indicator
   const profitEl = document.getElementById("profitNetProfit")?.parentElement;
   if (profitEl) {
-    profitEl.classList.toggle("highlight-green", netProfit > 0);
-    profitEl.classList.toggle("warn-zone", netProfit <= 0);
+    profitEl.classList.remove("highlight-green", "warn-zone");
+    if (netProfit > 0) profitEl.classList.add("highlight-green");
+    else profitEl.classList.add("warn-zone");
   }
 
-  setStatus("利润计算完成");
+  setStatus(netProfit > 0 ? `利润计算完成 — 盈利 $${netProfit.toFixed(2)}` : `利润计算完成 — 亏损 $${Math.abs(netProfit).toFixed(2)}`);
 }
 
 async function aiAnalyzeProfit() {
@@ -2716,14 +2776,36 @@ async function aiAnalyzeProfit() {
     return;
   }
   const p = lastProfitCalc;
-  const prompt = `请分析以下 FBA 产品利润结构并给出优化建议：\n售价: $${p.price}\n商品成本: $${p.cogs}\n头程运费: $${p.shipping}\nFBA配送费: $${p.fbaFee}\n佣金: $${p.referralFee.toFixed(2)}\n仓储费: $${p.storageFee}\n广告费: $${p.adsCost}\n退货损失: $${p.returnLoss.toFixed(2)}\n净利润: $${p.netProfit.toFixed(2)}\n利润率: ${p.margin}%\nROI: ${p.roi}%`;
+  const prompt = [
+    `请分析以下 FBA 产品利润结构并给出优化建议：`,
+    ``,
+    `售价: $${p.price}`,
+    `商品成本: $${p.cogs}`,
+    `头程运费: $${p.shipping}`,
+    `FBA配送费: $${p.fbaFee}`,
+    `亚马逊佣金: $${p.referralFee.toFixed(2)}`,
+    `月仓储费: $${p.storageFee}`,
+    `广告费: $${p.adsCost}`,
+    `退货损失: $${p.returnLoss.toFixed(2)}`,
+    `总成本: $${p.totalCost.toFixed(2)}`,
+    `净利润: $${p.netProfit.toFixed(2)}`,
+    `利润率: ${p.margin}%`,
+    `ROI: ${p.roi}%`,
+    `保本售价: $${p.breakeven}`,
+    p.monthlyProfit ? `预估月利润 (${p.dailySalesEst}单/天): $${p.monthlyProfit}` : "",
+    ``,
+    `请从以下角度分析：`,
+    `1. 利润结构健康度评估`,
+    `2. 成本占比分析（哪项成本占比过高）`,
+    `3. 定价策略建议`,
+    `4. 降本增效方案（至少3条具体建议）`,
+    `5. 广告投入产出比评估`,
+    `6. 与同类产品利润率对比参考`
+  ].filter(Boolean).join("\n");
+
   switchView("ai");
-  if (document.getElementById("aiInput")) {
-    document.getElementById("aiInput").value = prompt;
-  }
-  if (document.getElementById("aiRoleSelect")) {
-    document.getElementById("aiRoleSelect").value = "fbaprofitanalyst";
-  }
+  if (document.getElementById("aiInput")) document.getElementById("aiInput").value = prompt;
+  if (document.getElementById("aiRoleSelect")) document.getElementById("aiRoleSelect").value = "fbaprofitanalyst";
   setStatus("已切换到 AI Chat，请点击发送进行利润分析");
 }
 
@@ -2740,29 +2822,91 @@ async function kwAiExpand() {
     return;
   }
 
-  const prompt = `作为亚马逊关键词研究专家，请基于以下种子关键词进行拓词分析：\n\n种子关键词: ${seeds}${competitorAsin ? `\n竞品ASIN: ${competitorAsin}` : ""}\n\n请按以下分类输出关键词（每类至少10个）：\n1. 核心词 - 搜索量最大的主关键词\n2. 长尾词 - 精准长尾关键词\n3. 竞品词 - 竞品品牌/型号相关词\n4. 场景词 - 使用场景相关词\n\n每个关键词请标注预估搜索量级别（高/中/低）和竞争程度。`;
+  let competitorInfo = "";
+  // If competitor ASIN provided, try to fetch its product data for richer context
+  if (competitorAsin && ASIN_REGEX.test(competitorAsin)) {
+    try {
+      setStatus("正在获取竞品数据...");
+      const tab = await ensureSellerTabForProductFlow();
+      const resp = await sendToContent(tab.id, { action: "product.fetchApis", payload: { asin: competitorAsin } });
+      const target = resp?.targets?.[0]?.targetInformation || {};
+      const title = target.productTitle || "";
+      const bullets = [];
+      for (let i = 1; i <= 5; i++) {
+        const bp = target[`bulletPoint${i}`] || "";
+        if (bp) bullets.push(bp);
+      }
+      if (title) {
+        competitorInfo = [
+          `\n竞品ASIN: ${competitorAsin}`,
+          `竞品标题: ${title}`,
+          bullets.length ? `竞品五点:\n${bullets.map((b, i) => `  ${i + 1}. ${b}`).join("\n")}` : ""
+        ].filter(Boolean).join("\n");
+      }
+    } catch (e) {
+      competitorInfo = `\n竞品ASIN: ${competitorAsin} (数据获取失败，请基于ASIN分析)`;
+    }
+  } else if (competitorAsin) {
+    competitorInfo = `\n竞品ASIN: ${competitorAsin}`;
+  }
+
+  const prompt = [
+    `作为亚马逊关键词研究专家，请基于以下种子关键词进行拓词分析：`,
+    ``,
+    `种子关键词: ${seeds}`,
+    competitorInfo,
+    ``,
+    `请按以下分类输出关键词（每类至少10个）：`,
+    `1. 核心词 - 搜索量最大的主关键词`,
+    `2. 长尾词 - 精准长尾关键词（3-5个词组合）`,
+    `3. 竞品词 - 竞品品牌/型号相关词`,
+    `4. 场景词 - 使用场景/人群/季节相关词`,
+    ``,
+    `每个关键词请标注：预估月搜索量级别（高>10k/中3k-10k/低<3k）和竞争程度（高/中/低）。`,
+    `请以表格形式输出，方便后续导出使用。`
+  ].filter(Boolean).join("\n");
 
   switchView("ai");
-  if (document.getElementById("aiInput")) {
-    document.getElementById("aiInput").value = prompt;
-  }
-  if (document.getElementById("aiRoleSelect")) {
-    document.getElementById("aiRoleSelect").value = "listingoptimizer";
-  }
+  if (document.getElementById("aiInput")) document.getElementById("aiInput").value = prompt;
+  if (document.getElementById("aiRoleSelect")) document.getElementById("aiRoleSelect").value = "listingoptimizer";
   setStatus("已切换到 AI Chat 进行关键词拓展");
 }
 
 function kwExport() {
   const seeds = document.getElementById("kwSeedInput")?.value?.trim();
-  if (!seeds) {
-    setStatus("暂无关键词数据可导出");
+  // Also try to extract keywords from the latest AI response
+  const lastAiMsg = state.aiMessages?.filter((m) => m.role === "assistant").pop();
+  const aiContent = lastAiMsg?.content || "";
+
+  const seedKws = seeds ? seeds.split(/[\n,]+/).map((k) => k.trim()).filter(Boolean) : [];
+  // Extract keyword-like lines from AI response (lines that look like keyword entries)
+  const aiKws = [];
+  if (aiContent) {
+    const lines = aiContent.split("\n");
+    for (const line of lines) {
+      // Match lines that contain keyword-like patterns (table rows, numbered items, etc.)
+      const cleaned = line.replace(/^\s*[\d|*\-•]+[\s.)]*/, "").trim();
+      if (cleaned && cleaned.length > 1 && cleaned.length < 80 && !/^[#=\-]+$/.test(cleaned)) {
+        // Skip header-like lines
+        if (!/^(核心|长尾|竞品|场景|关键词|搜索|竞争|类型|分类|序号)/.test(cleaned)) {
+          aiKws.push(cleaned);
+        }
+      }
+    }
+  }
+
+  if (seedKws.length === 0 && aiKws.length === 0) {
+    setStatus("暂无关键词数据可导出，请先输入种子词或进行AI拓词");
     return;
   }
-  const keywords = seeds.split(/[\n,]+/).map((k) => k.trim()).filter(Boolean);
-  const csv = "关键词,类型\n" + keywords.map((k) => `${k},种子词`).join("\n");
+
+  const rows = [];
+  seedKws.forEach((k) => rows.push(`"${k.replace(/"/g, '""')}","种子词"`));
+  aiKws.forEach((k) => rows.push(`"${k.replace(/"/g, '""')}","AI拓展"`));
+  const csv = "关键词,来源\n" + rows.join("\n");
   const filename = `keywords-${Date.now()}.csv`;
   downloadCsv(csv, filename);
-  setStatus(`关键词已导出: ${filename}`);
+  setStatus(`已导出 ${seedKws.length + aiKws.length} 个关键词: ${filename}`);
 }
 
 async function kwCheckCoverage() {
@@ -2781,26 +2925,59 @@ async function kwCheckCoverage() {
       payload: { asin }
     });
 
-    const title = response?.targets?.[0]?.targetInformation?.productTitle || "";
+    const target = response?.targets?.[0]?.targetInformation || {};
+    const title = target.productTitle || "";
+    const description = target.productDescription || "";
     const bullets = [];
     for (let i = 1; i <= 5; i++) {
-      const bp = response?.targets?.[0]?.targetInformation?.[`bulletPoint${i}`] || "";
+      const bp = target[`bulletPoint${i}`] || "";
       if (bp) bullets.push(bp);
     }
+    const searchTerms = target.genericKeywords || target.searchTerms || "";
+
+    // Check seed keywords coverage
+    const seeds = document.getElementById("kwSeedInput")?.value?.trim();
+    const seedList = seeds ? seeds.split(/[\n,]+/).map((k) => k.trim().toLowerCase()).filter(Boolean) : [];
+    const fullText = [title, ...bullets, description, searchTerms].join(" ").toLowerCase();
+
+    const coverageResults = seedList.map((kw) => {
+      const inTitle = title.toLowerCase().includes(kw);
+      const inBullets = bullets.some((b) => b.toLowerCase().includes(kw));
+      const inDesc = description.toLowerCase().includes(kw);
+      const inSearch = searchTerms.toLowerCase().includes(kw);
+      return { keyword: kw, inTitle, inBullets, inDesc, inSearch, covered: inTitle || inBullets || inDesc || inSearch };
+    });
+
+    const coveredCount = coverageResults.filter((r) => r.covered).length;
+    const coverageRate = seedList.length > 0 ? ((coveredCount / seedList.length) * 100).toFixed(1) : "N/A";
 
     const resultEl = document.getElementById("kwCoverageResult");
     if (resultEl) {
-      resultEl.textContent = [
+      const lines = [
         `ASIN: ${asin}`,
         `标题: ${title || "(未获取到)"}`,
-        `五点数量: ${bullets.length}`,
-        `标题字符数: ${title.length}`,
-        ``,
-        `提示: 点击"AI 拓词"可获取更详细的关键词覆盖分析`
-      ].join("\n");
+        `五点数量: ${bullets.length} | 标题字符数: ${title.length}`,
+        `Search Terms: ${searchTerms ? "已设置" : "未设置"}`,
+        ``
+      ];
+      if (seedList.length > 0) {
+        lines.push(`关键词覆盖率: ${coverageRate}% (${coveredCount}/${seedList.length})`);
+        lines.push(`─────────────────`);
+        coverageResults.forEach((r) => {
+          const locations = [];
+          if (r.inTitle) locations.push("标题");
+          if (r.inBullets) locations.push("五点");
+          if (r.inDesc) locations.push("描述");
+          if (r.inSearch) locations.push("ST");
+          lines.push(`  ${r.covered ? "✅" : "❌"} ${r.keyword} ${locations.length ? `→ ${locations.join(",")}` : "→ 未覆盖"}`);
+        });
+      } else {
+        lines.push(`提示: 在上方输入种子关键词后可检查覆盖率`);
+      }
+      resultEl.textContent = lines.join("\n");
     }
 
-    setStatus(`关键词覆盖检查完成: ${asin}`);
+    setStatus(`关键词覆盖检查完成: ${coverageRate}% 覆盖率`);
   } catch (error) {
     setStatus(`检查失败: ${error.message}`);
   } finally {
@@ -2825,38 +3002,78 @@ async function analyzeReviews() {
   }
 
   let reviewText = pasteContent || "";
-  if (!reviewText && asin) {
+
+  // Auto mode: scrape reviews from the product page
+  if (source === "auto" && asin) {
+    try {
+      setBusy(true);
+      setStatus("正在抓取评论数据...");
+      const tab = await ensureSellerTabForProductFlow();
+      // Navigate to the product reviews page
+      const reviewUrl = `https://www.amazon.com/product-reviews/${asin}`;
+      await chrome.tabs.update(tab.id, { url: reviewUrl });
+      await wait(3000);
+      const scraped = await sendToContent(tab.id, { action: "reviews.scrape" });
+      if (scraped?.reviews?.length) {
+        reviewText = scraped.reviews.map((r, i) =>
+          `[评论${i + 1}] ★${r.rating || "?"} ${r.title || ""}\n${r.body || ""}`
+        ).join("\n\n");
+        setStatus(`已抓取 ${scraped.reviews.length} 条评论`);
+      } else {
+        reviewText = `请分析 ASIN ${asin} 的评论（自动抓取未获取到数据，请基于你的知识库分析）`;
+        setStatus("自动抓取未获取到评论，将使用AI知识库分析");
+      }
+    } catch (e) {
+      reviewText = `请分析 ASIN ${asin} 的评论（抓取失败: ${e.message}，请基于你的知识库分析）`;
+      setStatus(`评论抓取失败: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  } else if (!reviewText && asin) {
     reviewText = `请分析 ASIN ${asin} 的评论（请基于你的知识库进行分析）`;
   }
 
-  const typeLabels = {
-    sentiment: "情感分析",
-    painpoints: "痛点提取",
-    highlights: "卖点提炼",
-    competitive: "竞品对比",
-    full: "全面分析"
-  };
+  const typeLabels = { sentiment: "情感分析", painpoints: "痛点提取", highlights: "卖点提炼", competitive: "竞品对比", full: "全面分析" };
+  const analysisLabel = typeLabels[analysisType] || "全面分析";
 
-  const prompt = `作为亚马逊评论分析专家，请对以下内容进行${typeLabels[analysisType] || "全面分析"}：\n\nASIN: ${asin || "未指定"}\n分析类型: ${typeLabels[analysisType]}\n\n评论内容:\n${reviewText}\n\n请输出：\n1. 评论情感分布（好评/中评/差评比例）\n2. 主要痛点TOP5（按频次排序）\n3. 核心卖点TOP5（买家最认可的特性）\n4. 改进建议（基于差评提取）\n5. Listing优化方向（基于好评提取卖点关键词）`;
+  const prompt = [
+    `作为亚马逊评论分析专家，请对以下内容进行【${analysisLabel}】：`,
+    ``,
+    `ASIN: ${asin || "未指定"}`,
+    `分析类型: ${analysisLabel}`,
+    ``,
+    `评论内容:`,
+    reviewText,
+    ``,
+    `请输出：`,
+    analysisType === "sentiment" || analysisType === "full" ? `1. 评论情感分布（好评/中评/差评比例及关键情感词）` : "",
+    analysisType === "painpoints" || analysisType === "full" ? `2. 主要痛点TOP5（按频次排序，附原文引用）` : "",
+    analysisType === "highlights" || analysisType === "full" ? `3. 核心卖点TOP5（买家最认可的特性，附原文引用）` : "",
+    analysisType === "competitive" || analysisType === "full" ? `4. 竞品对比分析（买家提到的替代品及对比评价）` : "",
+    analysisType === "full" ? `5. 改进建议（基于差评提取，按优先级排序）` : "",
+    analysisType === "full" ? `6. Listing优化方向（基于好评提取卖点关键词，可直接用于标题/五点）` : ""
+  ].filter(Boolean).join("\n");
+
+  lastReviewAnalysis = { asin, analysisType: analysisLabel, timestamp: Date.now() };
 
   switchView("ai");
-  if (document.getElementById("aiInput")) {
-    document.getElementById("aiInput").value = prompt;
-  }
-  if (document.getElementById("aiRoleSelect")) {
-    document.getElementById("aiRoleSelect").value = "general";
-  }
-  setStatus("已切换到 AI Chat 进行评论分析");
+  if (document.getElementById("aiInput")) document.getElementById("aiInput").value = prompt;
+  if (document.getElementById("aiRoleSelect")) document.getElementById("aiRoleSelect").value = "general";
+  setStatus(`已切换到 AI Chat 进行${analysisLabel}`);
 }
 
 function exportReviewAnalysis() {
   const asin = document.getElementById("reviewAsin")?.value?.trim() || "unknown";
-  const lastAiMsg = state.aiMessages.filter((m) => m.role === "assistant").pop();
+  const analysisType = lastReviewAnalysis?.analysisType || "全面分析";
+  const lastAiMsg = state.aiMessages?.filter((m) => m.role === "assistant").pop();
   if (!lastAiMsg?.content) {
     setStatus("暂无分析结果可导出，请先进行评论分析");
     return;
   }
-  const csv = `ASIN,分析结果\n${asin},"${lastAiMsg.content.replace(/"/g, '""')}"`;
+  const csv = [
+    `ASIN,分析类型,分析时间,分析结果`,
+    `"${asin}","${analysisType}","${new Date().toLocaleString()}","${lastAiMsg.content.replace(/"/g, '""')}"`
+  ].join("\n");
   const filename = `review-analysis-${asin}-${Date.now()}.csv`;
   downloadCsv(csv, filename);
   setStatus(`评论分析已导出: ${filename}`);

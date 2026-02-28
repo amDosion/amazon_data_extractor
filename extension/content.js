@@ -39,6 +39,27 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return false;
   }
 
+  if (request?.action === "ads.fetchReport") {
+    fetchAdsReportData(request.payload || {})
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (request?.action === "inventory.fetch") {
+    fetchInventoryBundle(request.payload || {})
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (request?.action === "reviews.scrape") {
+    scrapeReviewsFromPage()
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   sendResponse({ ok: false, error: `Unknown action: ${request?.action}` });
   return false;
 });
@@ -534,4 +555,374 @@ async function waitForDomStable() {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// =====================================================
+// ===== 广告报告数据提取 =====
+// =====================================================
+async function fetchAdsReportData(payload) {
+  const reportType = String(payload.reportType || "sp").toLowerCase();
+  const dateRange = String(payload.dateRange || "LAST_30_DAYS");
+  const asinFilter = String(payload.asinFilter || "").trim();
+
+  // Seller Central 广告 API 端点
+  const endpoints = {
+    // 广告活动概览
+    campaigns: "https://sellercentral.amazon.com/api/advertising/campaigns",
+    // 广告组数据
+    adGroups: "https://sellercentral.amazon.com/api/advertising/ad-groups",
+    // 广告性能摘要
+    performance: "https://sellercentral.amazon.com/api/advertising/performance/summary"
+  };
+
+  // 尝试从页面 DOM 提取广告数据（适用于已在广告页面的情况）
+  const domData = extractAdsDataFromDom();
+
+  // 尝试 API 调用
+  let apiData = null;
+  try {
+    const performanceUrl = `${endpoints.performance}?dateRange=${encodeURIComponent(dateRange)}&reportType=${encodeURIComponent(reportType)}`;
+    apiData = await fetchJsonEndpoint(performanceUrl);
+  } catch (_error) {
+    // API 可能不可用，回退到 DOM 提取
+  }
+
+  // 合并数据源
+  const result = {
+    reportType,
+    dateRange,
+    source: apiData ? "api" : domData ? "dom" : "unavailable",
+    campaigns: [],
+    summary: {
+      totalSpend: 0,
+      totalSales: 0,
+      totalImpressions: 0,
+      totalClicks: 0,
+      acos: 0,
+      roas: 0,
+      ctr: 0,
+      cpc: 0
+    }
+  };
+
+  if (apiData) {
+    result.summary = extractAdsSummaryFromApi(apiData);
+    result.campaigns = extractCampaignsFromApi(apiData);
+  } else if (domData) {
+    result.summary = domData.summary;
+    result.campaigns = domData.campaigns;
+  }
+
+  // ASIN 过滤
+  if (asinFilter && result.campaigns.length > 0) {
+    const filterAsins = new Set(asinFilter.split(/[\s,]+/).map((a) => a.trim().toUpperCase()).filter(Boolean));
+    if (filterAsins.size > 0) {
+      result.campaigns = result.campaigns.filter((c) =>
+        !c.asin || filterAsins.has(c.asin.toUpperCase())
+      );
+    }
+  }
+
+  return result;
+}
+
+function extractAdsDataFromDom() {
+  // 尝试从广告管理页面的表格中提取数据
+  const tables = document.querySelectorAll("table, [role='grid']");
+  if (tables.length === 0) return null;
+
+  const campaigns = [];
+  let totalSpend = 0, totalSales = 0, totalImpressions = 0, totalClicks = 0;
+
+  for (const table of tables) {
+    const rows = table.querySelectorAll("tbody tr, [role='row']");
+    for (const row of rows) {
+      const cells = row.querySelectorAll("td, [role='gridcell']");
+      if (cells.length < 3) continue;
+
+      const texts = Array.from(cells).map((c) => c.textContent?.trim() || "");
+      const campaign = {
+        name: texts[0] || "",
+        status: "",
+        spend: 0,
+        sales: 0,
+        impressions: 0,
+        clicks: 0,
+        acos: 0
+      };
+
+      // 尝试解析数值（支持 $1,234.56 格式）
+      for (const text of texts) {
+        const numMatch = text.replace(/[$,¥€£]/g, "").match(/[\d.]+/);
+        if (!numMatch) continue;
+        const num = parseFloat(numMatch[0]);
+        if (isNaN(num)) continue;
+
+        const lower = text.toLowerCase();
+        if (lower.includes("spend") || lower.includes("花费") || (text.startsWith("$") && campaign.spend === 0)) {
+          campaign.spend = num;
+          totalSpend += num;
+        } else if (lower.includes("sales") || lower.includes("销售") || (text.startsWith("$") && campaign.sales === 0)) {
+          campaign.sales = num;
+          totalSales += num;
+        } else if (lower.includes("%") && campaign.acos === 0) {
+          campaign.acos = num;
+        }
+      }
+
+      if (campaign.name) campaigns.push(campaign);
+    }
+  }
+
+  // 也尝试从页面摘要区域提取
+  const summarySelectors = [
+    "[data-testid*='spend']", "[data-testid*='sales']", "[data-testid*='acos']",
+    ".metric-value", ".kpi-value", "[class*='spend']", "[class*='sales']"
+  ];
+
+  for (const sel of summarySelectors) {
+    const els = document.querySelectorAll(sel);
+    for (const el of els) {
+      const text = el.textContent?.trim() || "";
+      const numMatch = text.replace(/[$,¥€£]/g, "").match(/[\d.]+/);
+      if (!numMatch) continue;
+      const num = parseFloat(numMatch[0]);
+      if (isNaN(num)) continue;
+
+      const context = (el.closest("[class]")?.className || "").toLowerCase() + " " + (el.getAttribute("data-testid") || "").toLowerCase();
+      if (context.includes("spend") && totalSpend === 0) totalSpend = num;
+      if (context.includes("sales") && totalSales === 0) totalSales = num;
+    }
+  }
+
+  const acos = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
+  const roas = totalSpend > 0 ? totalSales / totalSpend : 0;
+
+  return {
+    summary: {
+      totalSpend,
+      totalSales,
+      totalImpressions,
+      totalClicks,
+      acos: parseFloat(acos.toFixed(1)),
+      roas: parseFloat(roas.toFixed(2)),
+      ctr: 0,
+      cpc: 0
+    },
+    campaigns
+  };
+}
+
+function extractAdsSummaryFromApi(data) {
+  if (!data || typeof data !== "object") return { totalSpend: 0, totalSales: 0, totalImpressions: 0, totalClicks: 0, acos: 0, roas: 0, ctr: 0, cpc: 0 };
+
+  const spend = parseFloat(data.totalSpend || data.spend || data.cost || 0);
+  const sales = parseFloat(data.totalSales || data.sales || data.attributedSales || 0);
+  const impressions = parseInt(data.totalImpressions || data.impressions || 0, 10);
+  const clicks = parseInt(data.totalClicks || data.clicks || 0, 10);
+  const acos = sales > 0 ? (spend / sales) * 100 : 0;
+  const roas = spend > 0 ? sales / spend : 0;
+  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+
+  return {
+    totalSpend: spend,
+    totalSales: sales,
+    totalImpressions: impressions,
+    totalClicks: clicks,
+    acos: parseFloat(acos.toFixed(1)),
+    roas: parseFloat(roas.toFixed(2)),
+    ctr: parseFloat(ctr.toFixed(2)),
+    cpc: parseFloat(cpc.toFixed(2))
+  };
+}
+
+function extractCampaignsFromApi(data) {
+  const list = data?.campaigns || data?.results || data?.items || [];
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => ({
+    name: item.name || item.campaignName || "",
+    status: item.status || item.state || "",
+    asin: item.asin || "",
+    spend: parseFloat(item.spend || item.cost || 0),
+    sales: parseFloat(item.sales || item.attributedSales || 0),
+    impressions: parseInt(item.impressions || 0, 10),
+    clicks: parseInt(item.clicks || 0, 10),
+    acos: parseFloat(item.acos || 0)
+  }));
+}
+
+// =====================================================
+// ===== 库存数据提取 =====
+// =====================================================
+async function fetchInventoryBundle(payload) {
+  const items = Array.isArray(payload.items) ? payload.items : [];
+
+  // Seller Central 库存 API 端点
+  const endpoints = {
+    inventory: "https://sellercentral.amazon.com/restockInventory/api/inventory",
+    fbaInventory: "https://sellercentral.amazon.com/api/fba-inventory",
+    inventoryHealth: "https://sellercentral.amazon.com/inventoryplanning/api/inventory-health"
+  };
+
+  let inventoryData = null;
+  const errors = [];
+
+  // 尝试多个 API 端点
+  for (const [name, url] of Object.entries(endpoints)) {
+    try {
+      inventoryData = await fetchJsonEndpoint(url);
+      if (inventoryData) break;
+    } catch (error) {
+      errors.push(`${name}: ${error.message}`);
+    }
+  }
+
+  // 回退到 DOM 提取
+  const domData = extractInventoryFromDom();
+
+  const result = {
+    source: inventoryData ? "api" : domData ? "dom" : "unavailable",
+    items: [],
+    summary: {
+      totalAvailable: 0,
+      totalInbound: 0,
+      totalReserved: 0,
+      totalUnfulfillable: 0,
+      avgDaysOfSupply: 0,
+      lowStockCount: 0
+    },
+    errors
+  };
+
+  if (inventoryData) {
+    result.items = extractInventoryItemsFromApi(inventoryData, items);
+  } else if (domData) {
+    result.items = domData.items;
+  }
+
+  // 计算汇总
+  for (const item of result.items) {
+    result.summary.totalAvailable += item.available || 0;
+    result.summary.totalInbound += item.inbound || 0;
+    result.summary.totalReserved += item.reserved || 0;
+    result.summary.totalUnfulfillable += item.unfulfillable || 0;
+    if (item.daysOfSupply > 0) {
+      result.summary.avgDaysOfSupply += item.daysOfSupply;
+    }
+    if (item.daysOfSupply > 0 && item.daysOfSupply < 14) {
+      result.summary.lowStockCount++;
+    }
+  }
+
+  if (result.items.length > 0) {
+    result.summary.avgDaysOfSupply = Math.round(result.summary.avgDaysOfSupply / result.items.length);
+  }
+
+  return result;
+}
+
+function extractInventoryFromDom() {
+  const tables = document.querySelectorAll("table, [role='grid']");
+  if (tables.length === 0) return null;
+
+  const items = [];
+  for (const table of tables) {
+    const rows = table.querySelectorAll("tbody tr, [role='row']");
+    for (const row of rows) {
+      const cells = row.querySelectorAll("td, [role='gridcell']");
+      if (cells.length < 2) continue;
+
+      const texts = Array.from(cells).map((c) => c.textContent?.trim() || "");
+      const asinMatch = texts.join(" ").match(/[A-Z0-9]{10}/i);
+
+      items.push({
+        asin: asinMatch ? asinMatch[0].toUpperCase() : "",
+        sku: texts[0] || "",
+        available: parseInt(texts.find((t) => /^\d+$/.test(t)) || "0", 10),
+        inbound: 0,
+        reserved: 0,
+        unfulfillable: 0,
+        daysOfSupply: 0
+      });
+    }
+  }
+
+  return items.length > 0 ? { items } : null;
+}
+
+function extractInventoryItemsFromApi(data, filterItems) {
+  const list = data?.inventoryItems || data?.items || data?.results || [];
+  if (!Array.isArray(list)) return [];
+
+  const filterSet = filterItems.length > 0
+    ? new Set(filterItems.map((i) => i.toUpperCase()))
+    : null;
+
+  return list
+    .map((item) => ({
+      asin: item.asin || "",
+      sku: item.sku || item.sellerSku || "",
+      title: item.productName || item.title || "",
+      available: parseInt(item.availableQuantity || item.fulfillableQuantity || item.available || 0, 10),
+      inbound: parseInt(item.inboundQuantity || item.inbound || 0, 10),
+      reserved: parseInt(item.reservedQuantity || item.reserved || 0, 10),
+      unfulfillable: parseInt(item.unfulfillableQuantity || item.unfulfillable || 0, 10),
+      daysOfSupply: parseInt(item.daysOfSupply || item.estimatedDaysOfSupply || 0, 10)
+    }))
+    .filter((item) => {
+      if (!filterSet) return true;
+      return filterSet.has(item.asin.toUpperCase()) || filterSet.has(item.sku.toUpperCase());
+    });
+}
+
+// =====================================================
+// ===== 评论抓取 =====
+// =====================================================
+async function scrapeReviewsFromPage() {
+  const reviews = [];
+
+  // 尝试从当前页面抓取评论
+  const reviewSelectors = [
+    "[data-hook='review']",
+    ".review",
+    "[class*='review-card']",
+    "[data-testid*='review']",
+    ".a-section.review"
+  ];
+
+  for (const selector of reviewSelectors) {
+    const nodes = document.querySelectorAll(selector);
+    if (nodes.length === 0) continue;
+
+    for (const node of nodes) {
+      const titleEl = node.querySelector("[data-hook='review-title'], .review-title, [class*='review-title']");
+      const bodyEl = node.querySelector("[data-hook='review-body'], .review-text, [class*='review-body']");
+      const ratingEl = node.querySelector("[data-hook='review-star-rating'], .review-rating, [class*='star-rating']");
+      const dateEl = node.querySelector("[data-hook='review-date'], .review-date, [class*='review-date']");
+
+      const title = titleEl?.textContent?.trim() || "";
+      const body = bodyEl?.textContent?.trim() || "";
+      const ratingText = ratingEl?.textContent?.trim() || ratingEl?.getAttribute("class") || "";
+      const ratingMatch = ratingText.match(/(\d(?:\.\d)?)/);
+      const rating = ratingMatch ? parseFloat(ratingMatch[1]) : 0;
+      const date = dateEl?.textContent?.trim() || "";
+
+      if (body || title) {
+        reviews.push({ title, body, rating, date });
+      }
+    }
+
+    if (reviews.length > 0) break;
+  }
+
+  // 检测 ASIN
+  const asin = detectAsinFromPage();
+
+  return {
+    asin,
+    reviewCount: reviews.length,
+    reviews,
+    source: reviews.length > 0 ? "dom" : "unavailable"
+  };
 }

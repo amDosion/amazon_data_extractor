@@ -350,7 +350,11 @@ async function handleMessage(request, sender) {
           productExtraction: "active",
           aiChat: "active",
           settings: "active",
-          ads: "planned",
+          ads: "active",
+          inventory: "active",
+          profit: "active",
+          keywords: "active",
+          reviews: "active",
           payments: "planned"
         }
       };
@@ -503,6 +507,36 @@ async function handleMessage(request, sender) {
         }
       });
       return result;
+    }
+
+    case "ads.fetchReport": {
+      const payload = request.payload ?? {};
+      const tabId = payload.tabId;
+      if (!tabId) throw new Error("No active Seller Central tab.");
+      const response = await chrome.tabs.sendMessage(tabId, { action: "ads.fetchReport", payload });
+      if (!response?.ok) throw new Error(response?.error || "Ads fetch failed");
+      await appendLog({ level: "info", scope: "ads", trigger: "manual", message: "Ads report data fetched", details: { reportType: payload.reportType, source: response.source } });
+      return response;
+    }
+
+    case "inventory.fetch": {
+      const payload = request.payload ?? {};
+      const tabId = payload.tabId;
+      if (!tabId) throw new Error("No active Seller Central tab.");
+      const response = await chrome.tabs.sendMessage(tabId, { action: "inventory.fetch", payload });
+      if (!response?.ok) throw new Error(response?.error || "Inventory fetch failed");
+      await appendLog({ level: "info", scope: "inventory", trigger: "manual", message: "Inventory data fetched", details: { source: response.source, itemCount: response.items?.length || 0 } });
+      return response;
+    }
+
+    case "reviews.scrape": {
+      const payload = request.payload ?? {};
+      const tabId = payload.tabId;
+      if (!tabId) throw new Error("No active tab.");
+      const response = await chrome.tabs.sendMessage(tabId, { action: "reviews.scrape", payload });
+      if (!response?.ok) throw new Error(response?.error || "Review scrape failed");
+      await appendLog({ level: "info", scope: "reviews", trigger: "manual", message: `Reviews scraped: ${response.reviewCount || 0}`, details: { asin: response.asin, count: response.reviewCount } });
+      return response;
     }
 
     default:
